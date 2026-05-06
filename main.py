@@ -48,6 +48,23 @@ async def generate_emr(request: Request):
         )
 
     async def event_stream():
+        from config import LangSmithSettings
+
+        ls_settings = LangSmithSettings()
+        trace_ctx = None
+        if ls_settings.enabled and ls_settings.api_key:
+            from langsmith import trace
+            trace_ctx = trace(
+                name="emr-generation-request",
+                project_name=ls_settings.project,
+                tags=[f"records:{num_records}", f"search:{enable_search}"],
+                metadata={
+                    "model": model_config.get("model", "unknown"),
+                    "num_records": num_records,
+                },
+            )
+            trace_ctx.__enter__()
+
         graph = build_graph()
         initial_state = {
             "num_records": num_records,
@@ -92,6 +109,9 @@ async def generate_emr(request: Request):
 
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+        finally:
+            if trace_ctx is not None:
+                trace_ctx.__exit__(None, None, None)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

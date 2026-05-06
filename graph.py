@@ -35,6 +35,8 @@ def _after_next(state: EMRState) -> str:
 
 def build_graph():
     """构建并编译 LangGraph 状态图。"""
+    from config import LangSmithSettings
+
     workflow = StateGraph(EMRState)
 
     workflow.add_node("init", init_node)
@@ -60,4 +62,15 @@ def build_graph():
         {"generate_emr": "generate_emr", END: END},
     )
 
-    return workflow.compile()
+    compiled = workflow.compile()
+
+    langsmith_settings = LangSmithSettings()
+    if langsmith_settings.enabled and langsmith_settings.api_key:
+        from langsmith import traceable
+        compiled = traceable(
+            compiled,
+            name="EMR-Generation-Agent",
+            metadata={"graph_version": "1.0"},
+        )
+
+    return compiled
