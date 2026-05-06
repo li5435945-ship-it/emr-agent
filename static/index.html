@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>门诊电子病历智能生成系统</title>
+<style>
+  :root {
+    --primary: #2F5496;
+    --primary-light: #e8f0fe;
+    --success: #1a7a1a;
+    --warning: #c79000;
+    --danger: #c00;
+    --bg: #f5f6fa;
+    --card-bg: #fff;
+    --border: #d0d5dd;
+    --text: #1a1a2e;
+    --text-secondary: #555;
+    --radius: 8px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  .header {
+    background: linear-gradient(135deg, #1a3a6b 0%, #2F5496 100%);
+    color: #fff;
+    padding: 24px 0;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,.12);
+  }
+  .header h1 { font-size: 1.6rem; font-weight: 600; letter-spacing: .5px; }
+  .header p { font-size: .85rem; opacity: .8; margin-top: 4px; }
+
+  .container {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06);
+  }
+  .card-title {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-title .icon { font-size: 1.2rem; }
+
+  .form-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: flex-end;
+  }
+  .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+    min-width: 140px;
+  }
+  .form-group label {
+    font-size: .82rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+  }
+  .form-group input, .form-group select {
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: .9rem;
+    font-family: inherit;
+    transition: border-color .2s;
+  }
+  .form-group input:focus, .form-group select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(47,84,150,.1);
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    font-size: .9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all .2s;
+    font-family: inherit;
+  }
+  .btn-primary {
+    background: var(--primary);
+    color: #fff;
+  }
+  .btn-primary:hover { background: #1e3f7a; }
+  .btn-primary:disabled { background: #b0bec5; cursor: not-allowed; }
+  .btn-outline {
+    background: #fff;
+    color: var(--primary);
+    border: 1px solid var(--primary);
+  }
+  .btn-outline:hover { background: var(--primary-light); }
+  .btn-success {
+    background: var(--success);
+    color: #fff;
+  }
+  .btn-success:hover { background: #145a14; }
+
+  .btn-row { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+
+  /* 进度区域 */
+  #progress-area { min-height: 60px; }
+  .progress-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    margin: 4px 0;
+    border-radius: 6px;
+    font-size: .88rem;
+    animation: fadeIn .3s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+
+  .progress-item.generating { background: #e3f2fd; }
+  .progress-item.validating { background: #fff3e0; }
+  .progress-item.passed { background: #e8f5e9; }
+  .progress-item.retrying { background: #fce4ec; }
+  .progress-item.force_passed { background: #fff8e1; }
+  .progress-item.search_done { background: #f3e5f5; }
+  .progress-item .indicator { font-size: 1rem; flex-shrink: 0; }
+
+  .summary-bar {
+    display: flex;
+    gap: 20px;
+    padding: 10px 0;
+    font-size: .88rem;
+    color: var(--text-secondary);
+  }
+  .summary-bar span { font-weight: 600; }
+
+  .empty-state {
+    text-align: center;
+    padding: 30px;
+    color: var(--text-secondary);
+    font-size: .9rem;
+  }
+
+  /* 响应式 */
+  @media (max-width: 640px) {
+    .form-row { flex-direction: column; }
+    .form-group { min-width: 100%; }
+    .container { padding: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>门诊电子病历智能生成系统</h1>
+  <p>基于 LangGraph 智能体 · 多轮校验保障诊疗逻辑质量</p>
+</div>
+
+<div class="container">
+  <!-- LLM 配置 -->
+  <div class="card">
+    <div class="card-title"><span class="icon">⚙️</span> LLM 配置</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>API Base URL</label>
+        <input id="cfg-base-url" type="text" placeholder="https://api.openai.com/v1" value="https://api.openai.com/v1">
+      </div>
+      <div class="form-group">
+        <label>API Key</label>
+        <input id="cfg-api-key" type="password" placeholder="sk-xxxxx">
+      </div>
+      <div class="form-group" style="max-width:160px">
+        <label>模型名</label>
+        <input id="cfg-model" type="text" placeholder="gpt-4o" value="gpt-4o">
+      </div>
+      <div class="form-group" style="max-width:80px">
+        <label>温度</label>
+        <input id="cfg-temp" type="number" step="0.1" min="0" max="2" value="0.7" style="width:80px">
+      </div>
+    </div>
+  </div>
+
+  <!-- 生成参数 -->
+  <div class="card">
+    <div class="card-title"><span class="icon">📋</span> 生成参数</div>
+    <div class="form-row">
+      <div class="form-group" style="max-width:100px">
+        <label>生成数量</label>
+        <input id="num-records" type="number" min="1" max="50" value="5">
+      </div>
+      <div class="form-group" style="flex:0 0 auto; justify-content:flex-end; padding-top:18px">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="enable-search" checked style="width:auto">
+          搜索中文医疗规范
+        </label>
+      </div>
+      <div class="form-group" style="flex:0 0 auto; padding-top:12px">
+        <span style="font-size:.82rem;color:var(--text-secondary)">科室：完全随机</span>
+      </div>
+      <div class="form-group">
+        <label>额外主题（可选）</label>
+        <input id="extra-topic" type="text" placeholder="如：老年病、季节性疾病等">
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="btn-start" onclick="startGeneration()">▶ 开始生成</button>
+      <button class="btn btn-outline" id="btn-clear" onclick="clearProgress()">🔄 清空重来</button>
+    </div>
+  </div>
+
+  <!-- 进度显示 -->
+  <div class="card">
+    <div class="card-title"><span class="icon">📡</span> 实时进度</div>
+    <div class="summary-bar" id="summary" style="display:none">
+      <span>总计：<b id="sum-total">0</b></span>
+      <span>通过：<b id="sum-passed" style="color:var(--success)">0</b></span>
+      <span>警告：<b id="sum-warn" style="color:var(--warning)">0</b></span>
+    </div>
+    <div id="progress-area">
+      <div class="empty-state">👆 配置 LLM 参数后点击"开始生成"</div>
+    </div>
+    <div class="btn-row" id="download-row" style="display:none">
+      <button class="btn btn-success" id="btn-download" onclick="downloadExcel()">📥 下载 Excel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let taskId = null;
+  let eventSource = null;
+  let passedCount = 0;
+  let warnCount = 0;
+
+  function getConfig() {
+    return {
+      num_records: parseInt(document.getElementById('num-records').value) || 5,
+      enable_search: document.getElementById('enable-search').checked,
+      model_config: {
+        base_url: document.getElementById('cfg-base-url').value.trim(),
+        api_key: document.getElementById('cfg-api-key').value.trim(),
+        model: document.getElementById('cfg-model').value.trim(),
+        temperature: parseFloat(document.getElementById('cfg-temp').value) || 0.7,
+        max_tokens: 4096,
+      },
+    };
+  }
+
+  function clearProgress() {
+    if (eventSource) { eventSource.close(); eventSource = null; }
+    document.getElementById('progress-area').innerHTML =
+      '<div class="empty-state">👆 配置 LLM 参数后点击"开始生成"</div>';
+    document.getElementById('summary').style.display = 'none';
+    document.getElementById('download-row').style.display = 'none';
+    document.getElementById('btn-start').disabled = false;
+    taskId = null;
+    passedCount = 0;
+    warnCount = 0;
+  }
+
+  function addProgressItem(item) {
+    const area = document.getElementById('progress-area');
+    // 清除空状态
+    const empty = area.querySelector('.empty-state');
+    if (empty) empty.remove();
+
+    const stage = item.stage || 'generating';
+    const indicatorMap = {
+      generating: '⏳', validating: '🔄', passed: '✅',
+      retrying: '🔁', force_passed: '⚠️', search_done: '🔍'
+    };
+    const indicator = indicatorMap[stage] || '📌';
+
+    const div = document.createElement('div');
+    div.className = 'progress-item ' + stage;
+    div.innerHTML = `<span class="indicator">${indicator}</span> ${item.message}`;
+    area.appendChild(div);
+    area.scrollTop = area.scrollHeight;
+  }
+
+  function startGeneration() {
+    const config = getConfig();
+    if (!config.model_config.api_key || !config.model_config.base_url) {
+      alert('请先填写 LLM API 的 Base URL 和 API Key');
+      return;
+    }
+    if (config.num_records < 1 || config.num_records > 50) {
+      alert('生成数量需在 1-50 之间');
+      return;
+    }
+
+    clearProgress();
+    document.getElementById('btn-start').disabled = true;
+    document.getElementById('summary').style.display = 'flex';
+    passedCount = 0;
+    warnCount = 0;
+
+    fetch('/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    }).then(response => {
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      function process() {
+        reader.read().then(({ done, value }) => {
+          if (done) {
+            document.getElementById('btn-start').disabled = false;
+            return;
+          }
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop(); // 保留不完整行
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                if (data.type === 'done') {
+                  taskId = data.task_id;
+                  document.getElementById('sum-total').textContent = data.total;
+                  document.getElementById('sum-passed').textContent = passedCount;
+                  document.getElementById('sum-warn').textContent = data.warnings;
+                  document.getElementById('download-row').style.display = 'flex';
+                  document.getElementById('btn-start').disabled = false;
+                } else if (data.type === 'error') {
+                  addProgressItem({ stage: 'retrying', message: '❌ 错误: ' + data.message });
+                  document.getElementById('btn-start').disabled = false;
+                } else {
+                  // 状态日志
+                  if (data.stage === 'passed') passedCount++;
+                  if (data.stage === 'force_passed') warnCount++;
+                  addProgressItem(data);
+                }
+              } catch (e) {
+                console.error('Parse SSE error:', e);
+              }
+            }
+          }
+          process();
+        });
+      }
+      process();
+    }).catch(err => {
+      addProgressItem({ stage: 'retrying', message: '❌ 连接失败: ' + err.message });
+      document.getElementById('btn-start').disabled = false;
+    });
+  }
+
+  function downloadExcel() {
+    if (!taskId) return;
+    window.open('/api/download/' + taskId, '_blank');
+  }
+</script>
+</body>
+</html>
